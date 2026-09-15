@@ -69,6 +69,9 @@ function toggleTheme() {
 function setTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   localStorage.setItem('lenny_theme', theme);
+  if (currentArtifact && $artifactPanel.classList.contains('open')) {
+    renderArtifactContent(currentArtifact);
+  }
 }
 
 // ── Auto-resize textarea & Keyboard shortcut ─────────────────
@@ -474,6 +477,7 @@ function openArtifactPanel(art, title, kind) {
 
 function renderArtifactContent(art) {
   $codePre.textContent = art.content || '';
+  const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
 
   if (art.kind === 'html') {
     $mdRendered.style.display = 'none';
@@ -487,6 +491,22 @@ function renderArtifactContent(art) {
       const srcdocValue = tmp.firstChild ? tmp.firstChild.getAttribute('srcdoc') : null;
       htmlContent = srcdocValue || art.content;
     }
+
+    // Ensure theme styling for bare/unstyled HTML apps
+    const themeDefault = currentTheme === 'light'
+      ? `<style id="_lenny_theme_fallback">html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #ffffff; color: #0f172a; }</style>`
+      : `<style id="_lenny_theme_fallback">html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #080c14; color: #f8fafc; }</style>`;
+
+    if (!htmlContent.includes('<style') && !htmlContent.includes('background:')) {
+      if (htmlContent.includes('<head>')) {
+        htmlContent = htmlContent.replace('<head>', '<head>' + themeDefault);
+      } else if (htmlContent.includes('<html')) {
+        htmlContent = htmlContent.replace(/<html[^>]*>/, '$&<head>' + themeDefault + '</head>');
+      } else {
+        htmlContent = themeDefault + htmlContent;
+      }
+    }
+
     $htmlFrame.srcdoc = htmlContent;
   } else {
     $htmlFrame.style.display = 'none';
