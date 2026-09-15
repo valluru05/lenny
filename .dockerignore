@@ -1,0 +1,22 @@
+# Backend build artifacts
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/**/*.pyo
+backend/.pytest_cache/
+backend/htmlcov/
+backend/.coverage
+backend/test_*.db
+backend/*.db
+
+# Secrets — NEVER bake these into the image
+backend/.env
+
+# Dev files
+backend/pytest.ini
+backend/tests/
+
+# Git
+.git/
+.gitignore

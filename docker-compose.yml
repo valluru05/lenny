@@ -1,0 +1,70 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Lenny Growth Assistant — Docker Compose
+#
+# Services:
+#   backend  — FastAPI + BM25 retrieval + LLM orchestrator  (port 8000)
+#   frontend — Static file server (nginx)                    (port 3000)
+#
+# Data flow:
+#   Host ./data/ directory is mounted into backend at /app/data/
+#   This means the BM25 index built on the host is immediately available,
+#   and any index rebuilt via POST /api/admin/reindex persists to the host.
+#
+# Ollama:
+#   Ollama runs on the HOST machine (not in Docker). The backend container
+#   reaches it via host.docker.internal:11434 (set in .env).
+#   On Linux, add: extra_hosts: ["host.docker.internal:host-gateway"]
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Backend ─────────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: runner
+    image: lenny-backend:latest
+    container_name: lenny-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      # These override .env values to use container-internal paths
+      DATABASE_URL: sqlite+aiosqlite:////app/data/lenny.db
+      TRANSCRIPTS_DIR: /app/data/transcripts
+      BM25_INDEX_PATH: /app/data/bm25_index.pkl
+      # Reach Ollama on the host
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+    volumes:
+      # Mount entire data dir — transcripts + index + SQLite DB
+      - ./data:/app/data
+    # On Linux, host.docker.internal isn't auto-resolved — add this:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  # ── Frontend ─────────────────────────────────────────────────────────────────
+  frontend:
+    image: nginx:alpine
+    container_name: lenny-frontend
+    ports:
+      - "3000:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+
+# ── Named volumes (not used — we use bind mounts for portability) ─────────────
+# volumes:
+#   lenny_data:
