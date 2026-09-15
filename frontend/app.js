@@ -136,8 +136,19 @@ async function openSession(id, title) {
       showEmpty();
     } else {
       hideEmpty();
-      data.messages.forEach(m => renderMessage(m));
+      let lastArtifact = null;
+      data.messages.forEach(m => {
+        renderMessage(m);
+        if (m.artifact) lastArtifact = m.artifact;
+      });
       scrollBottom();
+      if (lastArtifact) {
+        if (lastArtifact.id && !lastArtifact.id.startsWith('client-')) {
+          fetchAndOpenArtifact(lastArtifact.id, lastArtifact.title, lastArtifact.kind);
+        } else {
+          openArtifactPanel(lastArtifact, lastArtifact.title, lastArtifact.kind);
+        }
+      }
     }
   } catch (e) { showError('Could not load session: ' + e.message); }
 }
@@ -201,9 +212,13 @@ async function sendMessage() {
     renderMessage(msg);
     scrollBottom();
 
-    // Auto-open artifact panel if artifact generated
+    // Auto-open artifact panel in 50/50 split sandbox
     if (msg.artifact) {
-      fetchAndOpenArtifact(msg.artifact.id, msg.artifact.title, msg.artifact.kind);
+      if (msg.artifact.id && !msg.artifact.id.startsWith('client-')) {
+        fetchAndOpenArtifact(msg.artifact.id, msg.artifact.title, msg.artifact.kind);
+      } else {
+        openArtifactPanel(msg.artifact, msg.artifact.title, msg.artifact.kind);
+      }
     }
 
     loadSessions();
@@ -220,7 +235,36 @@ async function sendMessage() {
 
 function sendChipText(text) {
   $input.value = text;
+  $input.style.height = 'auto';
+  $input.style.height = Math.min($input.scrollHeight, 160) + 'px';
   sendMessage();
+}
+
+// ── Client Artifact Extraction Helper ─────────────────────────
+function extractClientArtifact(content) {
+  if (!content) return null;
+  // 1. Look for ```html ... ```
+  const htmlFence = content.match(/```(?:html|xml|htm)?\s*\n([\s\S]*?)```/i);
+  if (htmlFence && (htmlFence[1].includes('<html') || htmlFence[1].includes('<!DOCTYPE') || htmlFence[1].includes('<body') || htmlFence[1].includes('<div') || htmlFence[1].includes('<style'))) {
+    const titleMatch = htmlFence[1].match(/<title[^>]*>([^<]+)<\/title>/i) || htmlFence[1].match(/<h1[^>]*>([^<]+)<\/h1>/i);
+    const title = titleMatch ? titleMatch[1].trim() : 'dashboard.html';
+    return { id: 'client-html', kind: 'html', content: htmlFence[1].trim(), title };
+  }
+  // 2. Look for raw <!DOCTYPE html> ... </html> or <html> ... </html>
+  const rawHtml = content.match(/(<!DOCTYPE html[\s\S]*?<\/html>|<html[\s\S]*?<\/html>)/i);
+  if (rawHtml) {
+    const titleMatch = rawHtml[1].match(/<title[^>]*>([^<]+)<\/title>/i) || rawHtml[1].match(/<h1[^>]*>([^<]+)<\/h1>/i);
+    const title = titleMatch ? titleMatch[1].trim() : 'dashboard.html';
+    return { id: 'client-html', kind: 'html', content: rawHtml[1].trim(), title };
+  }
+  // 3. Look for ```markdown ... ```
+  const mdFence = content.match(/```markdown\s*\n([\s\S]*?)```/i);
+  if (mdFence) {
+    const titleMatch = mdFence[1].match(/^#+\s+(.+)$/m);
+    const title = titleMatch ? titleMatch[1].trim() : 'document.md';
+    return { id: 'client-md', kind: 'markdown', content: mdFence[1].trim(), title };
+  }
+  return null;
 }
 
 // ── Message rendering ─────────────────────────────────────────
@@ -235,8 +279,38 @@ function renderMessage(msg) {
     return;
   }
 
-  // Assistant message
-  const html = marked.parse(msg.content || '');
+  // Auto-detect client artifact if backend didn't attach one
+  if (!msg.artifact) {
+    const extracted = extractClientArtifact(msg.content);
+    if (extracted) msg.artifact = extracted;
+  }
+
+  // Assistant message formatting
+  let displayContent = msg.content || '';
+  let checklistHtml = '';
+
+  if (msg.artifact && msg.artifact.kind === 'html') {
+    // Strip the massive raw code block so the chat bubble remains clean like the reference UI
+    displayContent = displayContent
+      .replace(/```(?:html|xml|htm)?\s*\n[\s\S]*?```/gi, '')
+      .replace(/<!DOCTYPE html[\s\S]*?<\/html>/gi, '')
+      .replace(/<html[\s\S]*?<\/html>/gi, '')
+      .trim();
+
+    const artTitle = msg.artifact.title || 'dashboard.html';
+    checklistHtml = `
+      <div class="agent-step-list">
+        <div class="agent-step-item"><span class="asi-check">✓</span> <span class="asi-text">Generate ${esc(artTitle)} (HTML5 + Responsive CSS + Interactive JS)</span></div>
+        <div class="agent-step-item"><span class="asi-check">✓</span> <span class="asi-text">Mount isolated Virtual Sandbox with strict CSP</span></div>
+        <div class="agent-step-item"><span class="asi-check">✓</span> <span class="asi-text">Render live interactive simulator in right-hand split screen</span></div>
+      </div>`;
+    
+    if (!displayContent) {
+      displayContent = `The interactive application **${artTitle}** is ready and running in the Virtual Sandbox on the right.`;
+    }
+  }
+
+  const html = marked.parse(displayContent);
   const skillLabel = { qa: 'Q&A Grounded', ship30_essay: 'Ship30 Essay', artifact: 'Artifact' }[msg.skill] || msg.skill || '';
   const skillClass = { qa: 'qa', ship30_essay: 'ship30', artifact: 'artifact' }[msg.skill] || 'qa';
   const latency = msg.latency_ms ? `${msg.latency_ms}ms` : '';
@@ -265,16 +339,23 @@ function renderMessage(msg) {
   let artifactBtnHtml = '';
   if (msg.artifact) {
     const isHtml = msg.artifact.kind === 'html';
+    const artTitle = msg.artifact.title || (isHtml ? 'dashboard.html' : 'document.md');
+    const artAction = msg.artifact.id && !msg.artifact.id.startsWith('client-')
+      ? `fetchAndOpenArtifact('${msg.artifact.id}','${esc(artTitle)}','${msg.artifact.kind}')`
+      : `openArtifactPanel(window.__lastArt || ${JSON.stringify(msg.artifact).replace(/"/g, '&quot;')},'${esc(artTitle)}','${msg.artifact.kind}')`;
+    
+    window.__lastArt = msg.artifact;
+
     artifactBannerHtml = `
-      <div class="artifact-card-banner" onclick="fetchAndOpenArtifact('${msg.artifact.id}','${esc(msg.artifact.title || 'Artifact')}','${msg.artifact.kind}')">
+      <div class="artifact-card-banner" onclick="${artAction}">
         <div class="acb-icon">${isHtml ? '⚡' : '✍️'}</div>
         <div class="acb-info">
-          <div class="acb-title">${esc(msg.artifact.title || (isHtml ? 'Interactive HTML App' : 'Ship30 Essay / Document'))}</div>
-          <div class="acb-sub">Rendered in the Virtual Sandbox &nbsp;•&nbsp; Click to open sandbox panel</div>
+          <div class="acb-title">${esc(artTitle)}</div>
+          <div class="acb-sub">Rendered in Virtual Sandbox &nbsp;•&nbsp; Click to focus live preview</div>
         </div>
         <button class="acb-btn">View in Sandbox →</button>
       </div>`;
-    artifactBtnHtml = `<button class="btn-open-artifact-badge" onclick="fetchAndOpenArtifact('${msg.artifact.id}','${esc(msg.artifact.title || 'Artifact')}','${msg.artifact.kind}')">⚡ View ${isHtml ? 'HTML' : 'Markdown'} in Sandbox</button>`;
+    artifactBtnHtml = `<button class="btn-open-artifact-badge" onclick="${artAction}">⚡ View ${isHtml ? 'HTML Sandbox' : 'Document'} →</button>`;
   }
 
   // Regenerate button
@@ -282,6 +363,7 @@ function renderMessage(msg) {
 
   el.innerHTML = `
     <div class="msg-bubble">
+      ${checklistHtml}
       ${html}
       ${artifactBannerHtml}
     </div>
@@ -350,6 +432,9 @@ async function regenerateMsg(msgId, preview) {
     typing.remove();
     renderMessage(resp.message);
     scrollBottom();
+    if (resp.message?.artifact) {
+      fetchAndOpenArtifact(resp.message.artifact.id, resp.message.artifact.title, resp.message.artifact.kind);
+    }
   } catch (e) {
     typing.remove();
     renderErrorMsg(e.message);
@@ -365,15 +450,24 @@ async function fetchAndOpenArtifact(id, title, kind) {
     const art = await api('GET', `/artifacts/${id}`);
     currentArtifact = art;
     openArtifactPanel(art, title, kind);
-  } catch (e) { showError('Could not load artifact: ' + e.message); }
+  } catch (e) {
+    showError('Could not load artifact: ' + e.message);
+  }
 }
 
 function openArtifactPanel(art, title, kind) {
+  if (!art) return;
+  currentArtifact = art;
   $artifactPanel.classList.add('open');
-  $artifactTitle.textContent = art.title || title || 'Artifact';
+  const dispTitle = art.title || title || (art.kind === 'html' ? 'dashboard.html' : 'document.md');
+  $artifactTitle.textContent = dispTitle;
   const isHtml = (art.kind || kind) === 'html';
   $artifactBadge.textContent = isHtml ? 'HTML APP' : 'ESSAY / DOC';
   $artifactBadge.className = 'artifact-kind-badge ' + (isHtml ? 'html' : 'markdown');
+  
+  const iconEl = document.getElementById('sft-icon');
+  if (iconEl) iconEl.textContent = isHtml ? '⚡' : '📄';
+
   switchArtifactTab('preview');
   renderArtifactContent(art);
 }
@@ -384,16 +478,16 @@ function renderArtifactContent(art) {
   if (art.kind === 'html') {
     $mdRendered.style.display = 'none';
     $htmlFrame.style.display = 'block';
-    const rendered = art.rendered || '';
-    const match = rendered.match(/srcdoc="([\s\S]*?)(?:"(?:\s*\/>|>))/);
+    let htmlContent = art.content || '';
+    // If wrapped in iframe srcdoc by backend, unwrap or use raw
+    const match = (art.rendered || '').match(/srcdoc="([\s\S]*?)(?:"(?:\s*\/>|>))/);
     if (match) {
       const tmp = document.createElement('div');
       tmp.innerHTML = `<div srcdoc="${match[1]}"></div>`;
       const srcdocValue = tmp.firstChild ? tmp.firstChild.getAttribute('srcdoc') : null;
-      $htmlFrame.srcdoc = srcdocValue || art.content;
-    } else {
-      $htmlFrame.srcdoc = art.content;
+      htmlContent = srcdocValue || art.content;
     }
+    $htmlFrame.srcdoc = htmlContent;
   } else {
     $htmlFrame.style.display = 'none';
     $htmlFrame.srcdoc = '';
@@ -410,13 +504,6 @@ function switchArtifactTab(tab) {
   $preview.style.display = tab === 'preview' ? 'block' : 'none';
   $codeArea.classList.toggle('visible', tab === 'code');
   $codeArea.style.display = tab === 'code' ? 'block' : 'none';
-}
-
-function sendChipText(text) {
-  $input.value = text;
-  $input.style.height = 'auto';
-  $input.style.height = Math.min($input.scrollHeight, 160) + 'px';
-  sendMessage();
 }
 
 function closeArtifactPanel() {

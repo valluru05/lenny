@@ -143,25 +143,39 @@
     </div>
   </main>
 
-  <!-- ── Artifact panel ─────────────────────────────────── -->
+  <!-- ── Artifact / Virtual Sandbox panel ────────────────── -->
   <aside id="artifact-panel">
     <div id="artifact-header">
-      <span id="artifact-title">Artifact</span>
-      <span class="artifact-kind-badge markdown" id="artifact-kind-badge">MD</span>
-      <div class="artifact-tabs">
-        <button class="artifact-tab active" id="tab-preview" onclick="switchArtifactTab('preview')">Preview</button>
-        <button class="artifact-tab" id="tab-code" onclick="switchArtifactTab('code')">Code</button>
+      <div class="sandbox-breadcrumb">
+        <span class="sb-folder-icon">📁</span>
+        <span class="sb-path">Files /virtual-sandbox/artifacts/</span>
       </div>
-      <button class="btn-icon" title="Copy Content" onclick="copyArtifactContent()">📋</button>
-      <button class="btn-icon" title="Download Code" onclick="downloadArtifact()">⬇</button>
-      <button class="btn-icon" title="Close Panel" onclick="closeArtifactPanel()">✕</button>
+      <div class="sandbox-actions-top">
+        <button class="btn-icon" title="Copy Content" onclick="copyArtifactContent()">📋</button>
+        <button class="btn-icon" title="Download Code" onclick="downloadArtifact()">⬇</button>
+        <button class="btn-icon" title="Close Panel" onclick="closeArtifactPanel()">✕</button>
+      </div>
     </div>
+    
+    <div class="sandbox-tabs-row">
+      <div class="sandbox-file-pill active" id="sandbox-file-tab">
+        <span class="sft-icon" id="sft-icon">📄</span>
+        <span class="sft-name" id="artifact-title">dashboard.html</span>
+      </div>
+      <div class="artifact-tabs">
+        <button class="artifact-tab active" id="tab-preview" onclick="switchArtifactTab('preview')">👁️ Live Preview</button>
+        <button class="artifact-tab" id="tab-code" onclick="switchArtifactTab('code')">💻 Code</button>
+      </div>
+    </div>
+
     <div id="sandbox-notice">
       <span class="lock-icon">🔒</span>
       <span class="notice-text">
-        <strong>Isolated Sandbox:</strong> HTML renders in a secure CSP iframe with zero cross-origin access.
+        <strong>Virtual Sandbox Active:</strong> Interactive live rendering with strict Content Security Policy.
       </span>
+      <span class="artifact-kind-badge html" id="artifact-kind-badge">HTML APP</span>
     </div>
+
     <div id="artifact-content">
       <div id="artifact-preview" class="visible">
         <div id="md-rendered" class="md-rendered"></div>

@@ -33,33 +33,30 @@ if TYPE_CHECKING:
 
 log = get_logger("skill.artifact")
 
-# ── Prompts ──────────────────────────────────────────────────────────────────
+_ARTIFACT_SYSTEM = """You are an expert technical writer and senior frontend developer.
 
-_ARTIFACT_SYSTEM = """You are an expert technical writer and frontend developer.
-
-The user wants to generate a document or interactive artifact from the conversation context.
-Create exactly ONE of the following — based on what the user requests:
-
-For MARKDOWN artifacts:
-- Produce a well-structured Markdown document.
-- Wrap it in a fenced code block: ```markdown ... ```
-- Include a # H1 title, sections with ## headings, and useful content.
+The user wants to generate an interactive application, calculator, dashboard, or structured document.
+Create exactly ONE complete, self-contained deliverable:
 
 For HTML artifacts:
-- Produce a complete, self-contained HTML page (DOCTYPE, head, body).
-- Include all styles inline in a <style> block (no external CDN links).
-- Include all scripts inline in a <script> block if interactive.
+- Produce a complete, stunning, single-page application (DOCTYPE, head, style, body, script).
+- Include rich modern CSS inline in <style>: dark mode theme (#0b0f19 background, #151d30 cards, #38bdf8 sky blue and #10b981 emerald accents, glowing borders, font-family 'Inter' or system-ui).
+- Include KPI metric cards (e.g. Total Revenue, Retention Rate, Orders, Conversion Rate).
+- Include interactive controls (input fields, sliders, calculate buttons, real-time formula computation).
 - Wrap it in a fenced code block: ```html ... ```
-- The page must look polished with a dark theme and modern typography.
 
-IMPORTANT: Output ONLY the fenced code block. No explanation before or after.
-The artifact must be useful, complete, and renderable as-is.
+For MARKDOWN artifacts:
+- Produce a well-structured document with # H1 title, ## headings, bullet points, and key takeaways.
+- Wrap it in a fenced code block: ```markdown ... ```
+
+IMPORTANT: Output ONLY the fenced code block. No conversational preamble before or after.
+The artifact must be 100% complete, fully styled, interactive, and renderable as-is.
 
 CONTEXT FROM TRANSCRIPTS:
 {context}
 """
 
-_ARTIFACT_USER_TEMPLATE = """Generate a {kind} artifact for: {topic}
+_ARTIFACT_USER_TEMPLATE = """Generate a comprehensive {kind} artifact for: {topic}
 
 Requirements: {requirements}"""
 
